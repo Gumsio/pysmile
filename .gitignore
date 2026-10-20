@@ -1,0 +1,4 @@
+test.py
+*.csv
+.vscode
+__pycache__
