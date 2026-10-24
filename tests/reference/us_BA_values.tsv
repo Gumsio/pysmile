@@ -1,0 +1,5 @@
+subclass	value	proportion
+nonev_be	0.0715	0.4
+nonev_wo	0.00750000000800001	0.4
+event_wo	0.00850000001999999	0.4
+event_be	0.01922	0.4
