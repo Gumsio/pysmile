@@ -1,0 +1,6 @@
+Metric	Value
+AUC_ref	0.880
+AUC_p-value_ref	0.001
+AUC_new	0.960
+AUC_p-value_new	0.000
+AUC_diff_p_value	0.480
