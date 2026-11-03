@@ -29,6 +29,18 @@ and pROC installed in a development R environment, regenerate using:
 Rscript tests/reference/generate.R /path/to/pinned/R tests/reference
 ```
 
+Calibration-only fixtures are generated separately with base R:
+
+```sh
+Rscript tests/reference/generate_calibrators.R /path/to/pinned/R tests/reference
+```
+
+This requires the pinned `1_function_USclbr_mdl.R` source. The resulting
+`calibrator_inputs.tsv` and `calibrator_results.tsv` cover ordinary data,
+duplicate probabilities, endpoints, and predictions between observed knots
+for all three calibration methods. Logistic and intercept predictions are
+checked numerically; isotonic behavior is awaiting a user decision.
+
 The generator explicitly sources both PIW definitions in sequence and captures
 them separately. The file named `3_function_PRCplot.R` defines another
 `PIWplot`; it does not provide a resolved precision-recall implementation.
@@ -38,8 +50,9 @@ Fixture roles:
 - `predictions.tsv`: input with all four subclasses, exact ties, and tiny
   nonzero changes exposing the duplicate PIW definitions.
 - `us_*_values.tsv`, `us_*_summary.tsv`: independently computed R coefficient
-  results for rLR, BA, RB. R always supplies a finite overall likelihood-test
-  p-value for this input; Python BA/RB intentionally retain their existing NaNs.
+  results for rLR, BA, RB, including the overall likelihood-test p-value for
+  all three coefficients. Statistical regression tests check these results
+  independently of plotting.
 - `us_*_points.tsv`: point geometry, colors, fills, sizes, and R shape 21
   obtained from `ggplot2::ggplot_build(USplot(...))`.
 - `piw_exact_points.tsv`, `piw_tolerance_points.tsv`: R-built point layers
