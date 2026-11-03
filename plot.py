@@ -12,7 +12,10 @@ from matplotlib.figure import Figure
 from matplotlib.lines import Line2D
 from matplotlib.ticker import AutoMinorLocator, FuncFormatter, MaxNLocator, MultipleLocator
 
-from prep import USbind_out
+if __package__:
+    from .prep import USbind_out
+else:
+    from prep import USbind_out
 
 __all__ = ["USplot", "PIWplot", "ROCplot", "CLBplot"]
 
@@ -131,7 +134,8 @@ def _us_tick(value, ticks):
     return f"{value:.{decimals}f}"
 
 
-def USplot(plot_data, y_coef, circle_sizes=True, y_lim=None, net=False, crit=0):
+def USplot(plot_data=None, y_coef=None, circle_sizes=True, y_lim=None, net=False, crit=0,
+           *, raw_data=None, n_vars_diff=None):
     """Render an existing ``UScalc_raw`` result as a U-SMILE Figure.
 
     ``plot_data`` also accepts ``UScalc_mdl(...)["plot_data"]`` or its full
@@ -139,10 +143,20 @@ def USplot(plot_data, y_coef, circle_sizes=True, y_lim=None, net=False, crit=0):
     the current result structure does not carry coefficient identity.
     ``crit=2`` uses supplied class significance flags for rLR line styles.
     ``net`` displays supplied class net values. No statistics are recomputed.
-    Missing overall p-values are labelled ``NA`` (including BA and RB).
+    Missing overall p-values are labelled ``NA``.
     """
     if not isinstance(y_coef, str) or y_coef not in ("rLR", "BA", "RB"):
         raise ValueError("y_coef must be rLR, BA or RB.")
+    if raw_data is not None:
+        if plot_data is not None:
+            raise ValueError("Supply plot_data or raw_data, not both.")
+        if n_vars_diff is None:
+            raise ValueError("n_vars_diff is required with raw_data.")
+        if __package__:
+            from .stats import UScalc_raw
+        else:
+            from stats import UScalc_raw
+        plot_data = UScalc_raw(raw_data, y_coef, n_vars_diff)
     circle_sizes = _boolean(circle_sizes, "circle_sizes")
     net = _boolean(net, "net")
     crit = _scalar(crit, "crit")

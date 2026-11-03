@@ -2,3 +2,8 @@ test.py
 *.csv
 .vscode
 __pycache__
+.venv/
+.pytest_cache/
+build/
+dist/
+*.egg-info/

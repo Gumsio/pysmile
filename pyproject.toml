@@ -1,0 +1,28 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pysmile"
+version = "0.1.0.dev0"
+description = "Python tools for comparing probabilistic binary classifiers with U-SMILE"
+readme = "README.md"
+requires-python = ">=3.8"
+dynamic = ["dependencies"]
+
+[project.optional-dependencies]
+test = ["pytest>=7"]
+
+[project.urls]
+Repository = "https://github.com/Gumsio/pysmile"
+"R reference" = "https://cran.r-project.org/package=Usmile"
+
+[tool.setuptools]
+packages = ["pysmile"]
+include-package-data = false
+
+[tool.setuptools.package-dir]
+pysmile = "."
+
+[tool.setuptools.dynamic]
+dependencies = {file = ["requirements.txt"]}

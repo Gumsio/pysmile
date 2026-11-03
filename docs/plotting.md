@@ -1,6 +1,6 @@
 # Plotting interfaces
 
-Import the four functions from `plot`. Each returns a Matplotlib `Figure` that
+Import the four functions from `pysmile.plot` or `pysmile`. Each returns a Matplotlib `Figure` that
 can be edited through `fig.axes`, displayed in a notebook, or saved with
 `fig.savefig(...)`. Functions do not call `show`, register pyplot windows,
 change global styles, fit models, apply calibrators, or mutate inputs.
@@ -14,7 +14,8 @@ the independent R executions used to validate geometry and styles.
 ## U-SMILE coefficients
 
 ```python
-USplot(plot_data, y_coef, circle_sizes=True, y_lim=None, net=False, crit=0)
+USplot(plot_data=None, y_coef=None, circle_sizes=True, y_lim=None, net=False,
+       crit=0, *, raw_data=None, n_vars_diff=None)
 ```
 
 Supply `UScalc_raw(raw_data, y_coef, n_vars_diff, bootstrap_p=None)` directly,
@@ -28,8 +29,9 @@ UScalc_mdl(ref_model, new_model, y_coef, X_ref, X_new=None, y=None,
 
 `y_coef` must be `rLR`, `BA`, or `RB` and must match the earlier calculation.
 The current statistical result does not record its coefficient name, so the
-renderer cannot detect a mismatch. No raw-data or model-fitting workflow is
-added to `USplot`; call the existing statistical functions first.
+renderer cannot detect a mismatch. Alternatively supply `raw_data` with
+`n_vars_diff` to calculate statistics before rendering, as in R. Do not mix
+`plot_data` and `raw_data`. The model-formula workflow remains pending.
 
 The renderer uses these existing keys:
 
@@ -71,8 +73,8 @@ PIWplot(data_ref=None, data_new=None, title="PIW Plot", *, comparison_df=None)
 Use two outputs of `USprep_mdl(model, X, y=None, target_name=None)`:
 
 ```python
-from prep import USprep_mdl, USbind_out
-from plot import PIWplot
+from pysmile.prep import USprep_mdl, USbind_out
+from pysmile.plot import PIWplot
 
 ref = USprep_mdl(ref_model, X_ref, y)
 new = USprep_mdl(new_model, X_new, y)
@@ -83,11 +85,12 @@ bound = USbind_out(ref, new)
 same_plot = PIWplot(comparison_df=bound["comparison_df"])
 ```
 
-Prepared outputs contain `y`, `p`, and `n_vars`. Pair validation and combining
+Prepared outputs contain `y`, `p`, `n_vars`, and `var_names`. Pair validation and combining
 are delegated to `USbind_out`. A supplied `comparison_df` must contain
 `y`, `p_ref`, and `p`. Outcomes must be numeric or boolean 0/1, probabilities
 finite and in `[0, 1]`, and all vectors nonempty and aligned. Single-class
-inputs are supported. Apply an existing `USCalibrator` upstream if needed.
+inputs are supported. An independent calibrator can be supplied directly to
+`USprep_mdl(..., calibrator=calibrator)` or applied upstream.
 
 `stats.py` does not export a per-observation subclass assignment helper.
 Consequently PIW derives only the four drawing masks using its exact same
@@ -113,8 +116,9 @@ The pinned R source defines `PIWplot` in **both** `3_function_PIWplot.R` and
 Python follows the **PRC file's duplicate** for exact comparisons, colors,
 labels, caption, and normal plotting of zero-variable models. This matches
 the current Python statistical semantics. It accepts numeric/logical outcomes
-and single-class inputs consistently with Python's statistics and the primary
-R PIW definition. Near-zero changes are not assigned a tolerance. Grey points
+and single-class inputs consistently with the primary R PIW definition.
+Statistical calculations require both outcome classes. Near-zero changes
+are not assigned a tolerance. Grey points
 correspond to `stats.py`'s unassigned (`unknown`) observations. No `PRCplot`
 function is introduced.
 
@@ -190,10 +194,9 @@ and does not currently produce these calibration summaries.
 - Python returns `Figure` for all four functions. R returns ggplot objects
   for US/PIW and lists containing plots and statistical tables for ROC/CLB.
   Summaries stay with the Python caller; ROC/CLB rendering computes no statistics.
-- Existing Python BA/RB results have `p_Y_overall = NaN`; R calculates the
-  overall likelihood-test p-value even for these coefficients. Python displays
-  `NA` and leaves statistical semantics unchanged. Supplying a precomputed
-  finite p-value displays it without recalculation.
+- Statistical results include the overall likelihood-test p-value for rLR,
+  BA and RB, matching R. The renderer displays supplied values without
+  recalculation; an explicitly missing p-value is still displayed as `NA`.
 - PIW resolves the duplicate definitions as described above. Single-class
   numeric data remain supported and zero-variable models remain visible.
 - US net labels are retained outside the coefficient scale, whereas R can
@@ -206,7 +209,8 @@ and does not currently produce these calibration summaries.
   empty calibration bins must be removed upstream. The R plotting layers
   may instead omit missing rows while issuing a warning.
 
-`stats.py`, `prep.py`, and `calib.py` are unchanged. The plotting tests cover
+The plotting tests cover
 all coefficients, actual fitted-model results, edge cases, input validation,
 non-mutation, vector export, and independently generated R geometry/styles.
-No upstream statistical parity beyond these fixtures is claimed.
+The [R alignment report](r-alignment-report.md) records statistical and
+input-validation fixes and the remaining decisions about R behavior.

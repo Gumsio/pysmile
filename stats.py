@@ -1,7 +1,11 @@
 import numpy as np
 import pandas as pd
 import scipy.stats
-from prep import USprep_mdl, USbind_out
+from collections.abc import Mapping
+if __package__:
+    from .prep import USprep_mdl, USbind_out, _binary_outcomes, _probabilities, _variable_count
+else:
+    from prep import USprep_mdl, USbind_out, _binary_outcomes, _probabilities, _variable_count
 
 
 # calculate statistics for Usmile from raw data
@@ -9,12 +13,26 @@ from prep import USprep_mdl, USbind_out
 # functionality of R's function of the same name
 def UScalc_raw(raw_data, y_coef, n_vars_diff, bootstrap_p=None):
 
-    if y_coef not in ["rLR", "BA", "RB"]:
+    if not isinstance(y_coef, str) or y_coef not in ["rLR", "BA", "RB"]:
         raise ValueError("y_coef must be set to rLR, BA or RB!")
 
-    y = np.array(raw_data["y"])
-    p_ref = np.array(raw_data["p_ref"])
-    p = np.array(raw_data["p"])
+    if (not isinstance(raw_data, pd.DataFrame) or raw_data.columns.duplicated().any() or
+            not {"y", "p_ref", "p"}.issubset(raw_data.columns)):
+        raise ValueError("raw_data must be a DataFrame containing unique y, p_ref and p columns!")
+    y = _binary_outcomes(raw_data["y"], both_classes=True)
+    p_ref = _probabilities(raw_data["p_ref"])
+    p = _probabilities(raw_data["p"])
+    if len(y) != len(p_ref) or len(y) != len(p):
+        raise ValueError("Target values and probabilities must have the same length!")
+    n_vars_diff = _variable_count(n_vars_diff, "n_vars_diff")
+    if bootstrap_p is not None:
+        if not isinstance(bootstrap_p, Mapping) or not {"p_Y_nonev", "p_Y_event"}.issubset(bootstrap_p):
+            raise ValueError("bootstrap_p must contain p_Y_nonev and p_Y_event!")
+        for key in ["p_Y_nonev", "p_Y_event"]:
+            value = np.asarray(bootstrap_p[key])
+            if (value.ndim != 0 or value.dtype.kind not in "iuf" or
+                    not np.isfinite(value) or not 0 <= value <= 1):
+                raise ValueError("Bootstrap p-values must be finite probabilities between 0 and 1!")
 
     n0 = np.sum(y == 0)
     n1 = np.sum(y == 1)
@@ -44,16 +62,16 @@ def UScalc_raw(raw_data, y_coef, n_vars_diff, bootstrap_p=None):
     offset = 1e-10
 
     max_netto_Y_nonev, max_netto_Y_event, max_overall_Y, max_netto_Y_ratio = [np.nan, np.nan, np.nan, np.nan]
-    p_Y_nonev, p_Y_event, p_Y_overall = [np.nan, np.nan, np.nan]
+    p_Y_nonev, p_Y_event = [np.nan, np.nan]
+
+    # R reports the overall likelihood-test p-value for every coefficient.
+    res_ref = y * np.log(p_ref + offset) + (1 - y) * np.log(1 - p_ref + offset)
+    res = y * np.log(p + offset) + (1 - y) * np.log(1 - p + offset)
+    lrt_stat = 2 * abs(np.sum(res) - np.sum(res_ref))
+    p_Y_overall = scipy.stats.chi2.sf(lrt_stat, df)
 
     # relative likelihood Ratio
     if y_coef == "rLR":
-        res_ref = y * np.log(p_ref + offset) + (1 - y) * np.log(1 - p_ref + offset)
-        res = y * np.log(p + offset) + (1 - y) * np.log(1 - p + offset)
-        
-        lrt_stat = 2 * abs(np.sum(res) - np.sum(res_ref))
-        p_Y_overall = scipy.stats.chi2.sf(lrt_stat, df)
-        
         SS_nonev_ref = np.sum(res_ref[y == 0])
         SS_event_ref = np.sum(res_ref[y == 1])
         SS_nonev = np.sum(res[y == 0])
@@ -180,13 +198,8 @@ def UScalc_mdl(ref_model, new_model, y_coef, X_ref, X_new=None, y=None, ref_cali
     if X_new is None:
         X_new = X_ref
     
-    ref_data = USprep_mdl(ref_model, X_ref, y)
-    new_data = USprep_mdl(new_model, X_new, y)
-
-    if ref_calibrator is not None:
-        ref_data["p"] = ref_calibrator.apply(ref_data["p"])
-    if new_calibrator is not None:
-            new_data["p"] = new_calibrator.apply(new_data["p"])
+    ref_data = USprep_mdl(ref_model, X_ref, y, calibrator=ref_calibrator)
+    new_data = USprep_mdl(new_model, X_new, y, calibrator=new_calibrator)
 
     combined = USbind_out(ref_data, new_data)
     plot_data = UScalc_raw(combined["comparison_df"], y_coef, combined["n_vars_diff"])
@@ -227,4 +240,100 @@ def UScalc_mdl(ref_model, new_model, y_coef, X_ref, X_new=None, y=None, ref_cali
     return {
         "results": results,
         "plot_data": plot_data
+    }
+
+
+# calculate paired ROC statistics without fitting or changing either model
+def _roc_statistics(data_ref, data_new, alternative="two.sided"):
+    if not isinstance(alternative, str) or alternative not in ["two.sided", "greater", "less"]:
+        raise ValueError("alternative must be two.sided, greater or less!")
+    data = USbind_out(data_ref, data_new)["comparison_df"]
+    y = _binary_outcomes(data["y"], both_classes=True)
+    n1 = np.sum(y == 1)
+    n0 = np.sum(y == 0)
+    curves, positives, negatives, aucs = [], [], [], []
+
+    for key in ["p_ref", "p"]:
+        p = _probabilities(data[key])
+        event = p[y == 1]
+        nonevent = p[y == 0]
+        ranks = scipy.stats.rankdata(np.r_[event, nonevent])
+        v1 = (ranks[:n1] - scipy.stats.rankdata(event)) / n0
+        v0 = 1 - (ranks[n1:] - scipy.stats.rankdata(nonevent)) / n1
+        positives.append(v1)
+        negatives.append(v0)
+        aucs.append(np.mean(v1))
+
+        # R orders thresholds from low to high, including both endpoints.
+        unique, indices = np.unique(p, return_inverse=True)
+        event_counts = np.bincount(indices[y == 1], minlength=len(unique))
+        nonevent_counts = np.bincount(indices[y == 0], minlength=len(unique))
+        curves.append(pd.DataFrame({
+            "fpr": np.r_[1., (n0 - np.cumsum(nonevent_counts)) / n0],
+            "tpr": np.r_[1., (n1 - np.cumsum(event_counts)) / n1],
+        }))
+
+    covariance = np.full((2, 2), np.nan)
+    if n1 > 1 and n0 > 1:
+        centered1 = np.asarray(positives) - np.asarray(aucs)[:, None]
+        centered0 = np.asarray(negatives) - np.asarray(aucs)[:, None]
+        covariance = (centered1 @ centered1.T / (n1 * (n1 - 1)) +
+                      centered0 @ centered0.T / (n0 * (n0 - 1)))
+
+    auc_p = []
+    for auc, variance in zip(aucs, np.diag(covariance)):
+        if not np.isfinite(variance) or variance < 0:
+            auc_p.append(np.nan)
+        elif variance == 0:
+            auc_p.append(1. if auc == .5 else 0.)
+        else:
+            auc_p.append(2 * scipy.stats.norm.sf(abs(auc - .5) / np.sqrt(variance)))
+
+    difference = aucs[0] - aucs[1]
+    variance = covariance[0, 0] + covariance[1, 1] - 2 * covariance[0, 1]
+    if variance == 0 and difference == 0:
+        z = 0.
+    else:
+        with np.errstate(divide="ignore", invalid="ignore"):
+            z = np.divide(difference, np.sqrt(variance))
+    if alternative == "two.sided":
+        p_difference = 2 * scipy.stats.norm.sf(abs(z))
+    elif alternative == "greater":
+        p_difference = scipy.stats.norm.sf(z)
+    else:
+        p_difference = scipy.stats.norm.cdf(z)
+
+    return curves, {
+        "AUC_ref": aucs[0], "AUC_p-value_ref": auc_p[0],
+        "AUC_new": aucs[1], "AUC_p-value_new": auc_p[1],
+        "AUC_diff_p_value": p_difference,
+    }
+
+
+# calculate occupied calibration bins and Brier summaries as in R
+def _calibration_statistics(data_ref, data_new, n_bins=10):
+    data = USbind_out(data_ref, data_new)["comparison_df"]
+    y = _binary_outcomes(data["y"], both_classes=True)
+    n_bins = _variable_count(n_bins, "n_bins")
+    if n_bins != int(n_bins) or not 2 <= n_bins <= len(y):
+        raise ValueError("n_bins must be an integer between 2 and the number of observations!")
+    n_bins = int(n_bins)
+    breaks = np.linspace(0, 1, n_bins + 1)
+    curves = []
+    scores = []
+    for key in ["p_ref", "p"]:
+        p = _probabilities(data[key])
+        bins = np.clip(np.searchsorted(breaks, p, side="left") - 1, 0, n_bins - 1)
+        occupied = np.unique(bins)
+        curves.append(pd.DataFrame({
+            "Predicted": [np.mean(p[bins == i]) for i in occupied],
+            "Empirical": [np.mean(y[bins == i]) for i in occupied],
+            "Count": [np.sum(bins == i) for i in occupied],
+        }))
+        scores.append(np.mean((p - y) ** 2))
+    difference = scores[0] - scores[1]
+    return curves, {
+        "Brier_ref": scores[0], "Brier_new": scores[1],
+        "Delta_Brier": difference,
+        "BSS": difference / scores[0] if scores[0] > 0 else np.nan,
     }
