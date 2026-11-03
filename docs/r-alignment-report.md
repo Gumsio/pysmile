@@ -125,7 +125,19 @@ At the end of local packaging validation, no project commit, push, or PyPI
 publication had been made. The project owner has now authorized committing and
 pushing the existing `pipinstall` branch. The README uses that branch explicitly
 because the default branch does not yet contain these packaging changes.
-Installation from the published commit will be checked after the push.
+
+## Published branch verification
+
+The implementation was committed as
+`809c90435ea61e49ad2c36c17ed1d99192a49263` and pushed to `origin/pipinstall`.
+Pip successfully cloned that exact commit from GitHub and installed the package
+with isolated build dependencies in the temporary test environment. Installed
+metadata confirms the GitHub URL and commit. All **302 tests pass outside the
+repository** against this remote-installed package, and `pip check` reports no
+broken requirements. The existing scikit-learn deprecation warning remains.
+This verification is recorded in a documentation-only follow-up commit; no
+statistical behavior or pending design decision changed during publication.
+The default branch has not been changed and no PyPI publication was performed.
 Python 3.8+ is declared from the existing syntax and dependency minimums; only
 Python 3.14.4 has been tested. Licensing and a broader support matrix remain
 explicit decisions, rather than implied guarantees of the packaging change.
