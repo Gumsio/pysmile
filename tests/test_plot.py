@@ -13,9 +13,9 @@ import pandas as pd
 import pytest
 from sklearn.linear_model import LogisticRegression
 
-from plot import CLBplot, PIWplot, ROCplot, USplot
-from prep import USbind_out, USprep_mdl
-from stats import UScalc_mdl, UScalc_raw
+from pysmile.plot import CLBplot, PIWplot, ROCplot, USplot
+from pysmile.prep import USbind_out, USprep_mdl
+from pysmile.stats import UScalc_mdl, UScalc_raw
 
 
 REFERENCE = Path(__file__).parent / "reference"
@@ -91,15 +91,22 @@ def test_usplot_existing_raw_results(predictions, coefficient, circle_sizes, net
         [f"{result['netto_Y_nonev']:.2f}", f"{result['netto_Y_event']:.2f}"] if net else []
     )
     if coefficient != "rLR":
-        assert ax.get_title() == f"{coefficient} (p = NA)"
         assert ax.lines[0].get_color() == "#7F7F7F"
-    else:
-        assert ax.get_title() == f"rLR (p = {result['p_Y_overall']:.4f})"
+    assert ax.get_title() == f"{coefficient} (p = {result['p_Y_overall']:.4f})"
     if not circle_sizes:
         np.testing.assert_allclose(points.get_sizes(), (3 * 72 / 25.4) ** 2)
     assert_renderable(fig)
     assert_unchanged(result, before)
     assert_unchanged(predictions, original_predictions)
+
+
+def test_usplot_raw_probability_workflow(predictions):
+    actual = USplot(raw_data=predictions, y_coef="BA", n_vars_diff=1)
+    expected = USplot(UScalc_raw(predictions, "BA", 1), "BA")
+    np.testing.assert_allclose(actual.axes[0].collections[0].get_offsets(),
+                               expected.axes[0].collections[0].get_offsets())
+    with pytest.raises(ValueError, match="not both"):
+        USplot(UScalc_raw(predictions, "BA", 1), "BA", raw_data=predictions, n_vars_diff=1)
 
 
 @pytest.mark.parametrize("coefficient", COEFFICIENTS)
